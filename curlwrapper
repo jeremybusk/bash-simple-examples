@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+if [[ "$#" -ne 3 ]]; then
+  echo "Usage: $0 <type> <curl metric> <url>"
+  echo "Example: $0 url time_connect https://google.com"
+echo "
+====URL Type Metrics====
+time_namelookup
+time_connect
+time_appconnec
+time_pretransfer
+time_redirect
+time_starttransfer
+time_total
+"
+  exit
+fi
+curltype=$1
+metric=$2
+url=$3
+
+if [[ "$curltype" == "url" ]]; then
+   cmd="/usr/bin/curl -w \" %{$metric}\" -o /dev/null -s \"$url\""
+   metric_value=$(eval "$cmd")
+else
+  echo "E: Unsupported type of check."
+fi
+
+code=$?
+if [[ "$code" != 0 ]]; then
+   # echo error
+    echo "$metric_value"
+else
+    echo "$metric_value"
+fi
