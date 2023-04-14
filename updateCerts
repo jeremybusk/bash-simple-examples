@@ -1,0 +1,71 @@
+#!/bin/bash
+set -eu
+# export PASSIN="<Your venafi PKCS#12 download pfx file password>"
+# export AD_USER="<Your AD username>"
+# export AD_PASS="Your AD user password"
+
+ca_crt_file="~/ca.crt"
+entity_crt_file="~/entity.crt"
+entity_key_file="~/entity.key"
+
+hosts=(
+  "foo.example.com"
+)
+# cn=$1
+
+
+ssh_cmd(){
+  cmd=$1
+  sshpass -p "${AD_PASS}" ssh -l "${AD_USER}"  $cn "${cmd}"
+}
+
+
+ssh_cmd_sudo(){
+  cmd=$1
+  sshpass -p "${AD_PASS}" ssh -l "${AD_USER}"  $cn "echo ${AD_PASS} | sudo -S ${cmd}"
+}
+
+
+view_cmds=(
+  "openssl x509 -text -in ${entity_key_file}"
+  "openssl x509 -text -in ${entity_crt_file}"
+  "openssl x509 -text -in ${ca_crt_file}"
+  "openssl verify -verbose -CAfile ${ca_crt_file} ${entity_crt_file}"
+)
+
+
+extract_crts_keys_from_pfx(){
+  cn=$1
+  openssl pkcs12 -passin env:PASSIN -in ${cn}.pfx -nocerts -nodes > ${cn}.key.pem
+  openssl pkcs12 -passin env:PASSIN -in ${cn}.pfx -clcerts -nokeys > ${cn}.crt.pem
+  openssl pkcs12 -passin env:PASSIN -in ${cn}.pfx -cacerts -nokeys -chain > ${cn}.ca.crt.pem
+}
+
+
+update_certs(){
+  cn=$1
+
+  extract_crts_keys_from_pfx "${cn}"
+
+  ts=$(date "+%Y%m%d-%H%M")
+  echo "Updating host with cn: $cn"; sleep 1
+  sshpass -p "${AD_PASS}" scp ca.chains.crt $cn.* $cn:~/
+  # ssh_cmd_sudo "cp ${cn}.ca.crt.pem ${ca_crt_file}"
+  ssh_cmd_sudo "cp ca.chains.crt ${ca_crt_file}"
+  ssh_cmd_sudo "cp ${ca_crt_file} ${ca_crt_file}.bkp.${ts}"
+  ssh_cmd_sudo "cp ${entity_crt_file} ${entity_crt_file}.bkp.${ts}"
+  ssh_cmd_sudo "cp ${entity_key_file} ${entity_key_file}.bkp.${ts}"
+  ssh_cmd_sudo "cp ${cn}.key.pem ${entity_key_file}"
+  ssh_cmd_sudo "cp ${cn}.crt.pem ${entity_crt_file}"
+}
+
+
+main(){
+  for host in "${hosts[@]}"; do
+    echo updating "$host"; sleep 1
+    update_certs "${host}"
+  done
+}
+
+
+main
